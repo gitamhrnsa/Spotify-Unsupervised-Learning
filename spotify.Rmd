@@ -1,0 +1,422 @@
+---
+title: "Unsupervised Learning"
+author: "Gita Maharani"
+date: "`r format(Sys.Date(), '%B %e, %Y')`"
+output:
+  html_document:
+    theme: cosmo
+    highlight: tango
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 10)
+```
+
+# 1. Introduction
+
+Spotify adalah layanan streaming musik, podcast, dan video digital yang memberi Anda akses ke jutaan lagu dan konten lainnya dari artis di seluruh dunia. Baru-baru ini spotify adalah salah satu layanan musik dan podcast digital terbesar di dunia.
+
+
+Kali ini akan mencoba menganalisis popularitas untuk setiap lagu yang didapatkan, berdasarkan data kami akan mencoba mencari ada hubungan dari popularitas dengan fitur atau variabel lain. Dan akan mencoba melakukan analisis clustering menggunakan metode K-means dan akan mencoba menemukan untuk mereduksi dimensi menggunakan Principle Component Analysis (PCA)
+
+## 1.1 Intial Setup and Library
+
+```{r message=FALSE}
+# Starting collection for data science
+library(tidyverse)
+# Processing string
+library(glue)
+# Processing date data type
+library(lubridate)
+# Multivariate Data Analyses
+library(factoextra)
+# Multivariate Data Analyses
+library(FactoMineR)
+# Data visualization
+library(ggplot2)
+library(viridis)
+library(GGally)
+library(scales)
+```
+
+
+# 2. Exploratory Data
+## 2.1 Import Data
+
+Dataset didapatkan dari kaggle, yang akan diimport dan dimasukan ke dalam variabel 'spotify'. Dataset ini berisi fitur audio dari sebuah track.
+
+```{r message=FALSE}
+spotify <- read_csv("spotify.csv")
+```
+
+# 2.2 Observe Structure Data
+Melihat tipe data 'spotify' dengan menggunakan glimpse ()
+
+```{r}
+glimpse(spotify)
+```
+
+Penjelasan variabel :   
+1. `genre` : Genre dari track   
+2. `artist_name` : Nama artis   
+3. `track_name` : Judul track
+4. `track_id` : ID Spotify untuk track   
+5. `popularity` : Rating popularitas (1-100)   
+6. `acousticness` : A confidence measure dari 0,0 hingga 1,0 track acoustic. 1.0 mewakilkan high confidence acoustic track
+7. `danceability` : menggambarkan seberapa cocok track untuk menari berdasarkan kombinasi elemen musik termasuk tempo, stabilitas ritme, kekuatan ketukan, dan keteraturan keseluruhan. Nilai 0,0 adalah yang paling tidak sesuai  
+8. `duration_ms` : Durasi track dalam milliseconds.   
+9. `energy` : 	Ukuran dari 0,0 hingga 1,0 dan mewakili ukuran persepsi intensitas dan aktivitas. 
+10. `instrumentalness` : Memprediksi apakah trek tidak mengandung vokal. Suara “Ooh” dan “aah” diperlakukan sebagai instrumental dalam konteks ini. Rap atau kata yang diucapkan jelas adalah "vokal". Semakin dekat nilai instrumental menjadi 1,0, semakin besar kemungkinan track tersebut tidak berisi konten vokal. Nilai di atas 0,5 dimaksudkan untuk mewakili track instrumental, tetapi confidence lebih tinggi saat nilainya mendekati 1,0.   
+11. `key` : Perkiraan kunci keseluruhan track. 
+12. `liveness` : 	Mendeteksi kehadiran penonton dalam rekaman. Higher liveness values menunjukkan peningkatan kemungkinan bahwa track ditampilkan secara langsung.   
+13. `loudness` : Kenyaringan keseluruhan trek dalam desibel (dB). Nilai kenyaringan dirata-ratakan di seluruh track dan berguna untuk membandingkan kenyaringan relatif track.
+14. `mode` : 	Mode menunjukkan modalitas (mayor atau minor) dari sebuah trek, jenis tangga nada dari mana konten melodinya berasal. Mayor diwakili oleh 1 dan minor adalah 0.  
+15. `speechiness` : mendeteksi keberadaan kata-kata yang diucapkan di track.  
+16, `tempo` : Perkiraan tempo keseluruhan track dalam ketukan per menit (BPM). 
+17. `time_signature` : 	Perkiraan signature waktu keseluruhan trek. Signature waktu (meter) adalah konvensi notasi untuk menentukan berapa banyak ketukan di setiap bar (atau ukuran). 
+18. `valence` : Ukuran dari 0,0 hingga 1,0 yang menggambarkan kepositifan musik yang disampaikan oleh sebuah track. Trac dengan valensi tinggi terdengar lebih positif (misalnya bahagia, ceria, euforia), sedangkan track dengan valensi rendah terdengar lebih negatif (misalnya sedih, tertekan, marah).
+
+## 2.3 Data Wrangling
+
+Pertama, kita akan mengecek NA atau missing value dari setiap variable
+
+```{r}
+colSums(is.na(spotify))
+```
+Berdasarkan hasil di atas masih terdapat beberapa column yang memiliki missing value
+
+Sehingga, missing value tersebut perlu dihilangkan. Salah satunya bisa dengan cara 'na.omit()' dan disimpan ke dalam variabel 'spotify'
+```{r}
+spotify <- na.omit(spotify)
+```
+
+Setelah itu dicek kembali, apakah masih ada missing value atau tidak
+```{r}
+colSums(is.na(spotify))
+```
+Hasil yang didapatkan sudah tidak ada lagi missing value
+
+
+Pada pengecekan tipe data di atas, masih terdapat kesalahan
+```{r}
+str(spotify)
+```
+
+Beberapa variabel yang memeiliki tipe data yang kurang teepat perlu diganti, beberapa variabel tersebut adalah:
+* `genre` : diubah menjadi factor   
+* `key` : diubah menjadi factor   
+* `genre` : diubah menjadi factor   
+* `mode`: diubah menjadi factor
+
+```{r}
+spotify <- spotify  %>% 
+                  mutate(genre = as.factor(genre),
+                  key = as.factor(key),
+                  genre = as.factor(str_replace_all(genre, "[[:punct:]]", "")),
+                  mode = as.factor(mode))
+```
+Tipe data yang salah sudah berhasil diubah!
+
+Setelah itu, terdapat juga beberapa variabel yang tidak diperlukan dalam analisis kali ini. 
+```{r}
+summary(spotify)
+```
+
+Sehingga, diperlukan drop variable yaitu variabel `track id`, `time_signature`, `track_name`. 
+
+```{r message=FALSE}
+spotify <- spotify %>% 
+  select(-c(track_id,time_signature,track_name))
+```
+KEtiga variabel di atas sudah berhasil dihilangkan!!
+
+# 3. Exploratory Data Analysis
+
+Dari dataset ditemukan bahwa terdapat `genre` yang dapat dikelompokkan berdasarkan database. Untuk membuat fokus pada variabel popularitas, akan dipilih 5 genre rata-rata tertinggi. Itu dapat menembus genre yang memiliki distribusi besar dari popularitas rendah hingga tertinggi. Hal tersebut akan coba divisualisasikan dengan chart dibawah.
+```{r}
+genre_popularity <- spotify %>% select(popularity, genre) %>% group_by(genre) %>% summarise("average_popularity" = round(mean(popularity)))
+ggplot(data=genre_popularity, mapping = aes(x = reorder(genre,average_popularity), y = average_popularity, fill = genre)) +
+  geom_col() +
+  coord_flip() +
+  theme_grey() +
+  theme(
+    legend.position = "none",
+    
+  ) +
+  labs(
+    y = "Average Popularity",
+    x = "Genre"
+  )
+  
+```
+
+5 Genre dengan rata-rata popularitas tertinggi adalah Pop, Rap, Rock, HipHop and Dance. Selanjutnya difilter data yang hanya terdiri 5 genre tersebut 
+
+```{r}
+# Filter
+spotify <- spotify %>% filter(genre == "Pop" | genre == "Rap" | genre == "Rock" | genre == "HipHop" | genre == "Dance")
+# Total row
+NROW(spotify)
+```
+
+Kami telah memfilter data, dan kemudian dapat memeriksa distribusi popularitas data baru.Ditemukan bahwa distribusi popularitas mengalami lonjakan di tengah popularitas sekitar 50.
+```{r}
+hist(spotify$popularity)
+```
+
+# 4. Clustering Opportunity
+
+Sebelum kita menggunakan k-mean sebagai metode untuk clustering, kita bisa menggunakan cara sederhana untuk melakukan clustering beberapa variabel faktor dengan variabel popularitas. Di sini akan dicoba untuk memvisualisasikan boxplot `popularity` dengan `key` dan `genre'
+
+
+```{r}
+spotify %>% 
+  ggplot(aes(x = key, y = popularity, fill = key)) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+  theme_minimal()
+```
+
+```{r}
+spotify %>% 
+  ggplot(aes(x = genre, y = popularity, fill = genre)) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE, alpha=0.6) +
+  theme_minimal()
+```
+
+Dari kedua bar tersebut, kita dapat melihat secara umum `genre` dan `key` tidak memiliki hubungan yang signifikan dengan `popularitas`. Meski begitu, terdapat perbedaan plot `popluarity` dan `genre` ketika track secara keseluruhan menggunakan Key A# popularitasnya sedikit lebih tinggi dan lebih stabil dibanding yang lain.
+
+Selain itu, kami menemukan bahwa genre Pop memiliki popluaritas yang lebih stabil daripada 4 genre lainnya. Jadi kami dapat mempertimbangkan pendapat, jika produser ingin mendapatkan popularitas lebih di platform spotify, kami dapat membuat trek lagu dengan genre Pop dan kunci keseluruhan trek menggunakan kunci A#.
+
+Sebelumnya kami hanya memvisualisasikan `genre` dan `key`, dan ditemukan bahwa setiap korelasi dengan popularitas, meskipun tidak dapat secara signifikan variabel mana yang dapat meningkatkan popularitas secara signifikan. Jadi kami akan mencoba memvisualisasikan variabel numerik lainnya untuk melihat korelasi di antara mereka.
+```{r}
+ggcorr(spotify, low = "red", high = "maroon")
+```
+
+Ini menunjukkan bahwa popularitas tidak memiliki korelasi yang kuat dengan variabel numerik lainnya. Namun kami menemukan beberapa variabel memiliki kekuatan satu sama lain, hal ini menunjukkan bahwa dataset ini memiliki multikolinearitas dan mungkin tidak cocok untuk berbagai algoritma klasifikasi.
+
+Untuk menemukan pola yang lebih menarik dan belum ditemukan dalam data, kita akan menggunakan metode clustering menggunakan K-means. Kami akan menggunakan Principal Component Analysis (PCA) dapat dilakukan untuk data ini untuk menghasilkan data non-multikolinearitas, sekaligus mengurangi dimensi data dan menyimpan informasi sebanyak mungkin. Hasil analisis ini dapat dimanfaatkan lebih lanjut untuk tujuan klasifikasi dengan komputasi yang lebih rendah.
+
+# 5. Data Preprocessing
+Karena kita akan mengimplementasikan metode K-means dan menggunakan PCA, maka perlu dilakukan pre-processing data. Tidak akan mengambil semua data, melainkan melakukan sampling dari data. Jadi hanya mengambil sekitar 5% dari data.
+```{r}
+set.seed(100)
+spotify_sample <- sample_n(spotify, (nrow(spotify) * 0.05))
+NROW(spotify_sample)
+```
+
+After do sampling we check distribution of popularity. We get distribution our popularity frequency still have same pattern before we take sample.
+
+```{r}
+hist(spotify_sample$popularity)
+```
+
+Langkah selanjutnya, kita akan melakukan feature scaling.  Dalam pemrosesan data, ini juga dikenal sebagai normalisasi data dan umumnya dilakukan selama langkah pra-pemrosesan data.
+```{r}
+spotify_num <- spotify_sample %>% select(-c(genre,artist_name,key,mode))
+str(spotify_num)
+```
+
+```{r}
+spotify_scale <- scale(spotify_num)
+head(spotify_scale)
+```
+
+# 6. Clustering 
+
+## 6.1 Find optimal number of Clusters
+
+Kami akan mencoba mencari jumlah cluster yang optimal, dalam hal ini kami akan mencoba menggunakan 3 metode: Metode Elbow, Metode Sillhoute, dan gap statistik. Pada akhirnya setelah kita mendapatkan hasil dari 3 metode ini, kita akan memilih cluster yang optimal berdasarkan suara terbanyak.
+## 6.2 Elbow Method
+
+Best practice of elbow method didasrkan pada grafik, kita akan memilih "bend of an elbow"
+
+```{r}
+fviz_nbclust(spotify_num, kmeans, method = "wss", k.max = 10) +
+  scale_y_continuous(labels = number_format(scale = 10^(-9), big.mark = ",", suffix = " bil.")) +
+  labs(subtitle = "Elbow method")
+```
+
+Kami menemukan 2 cluster cukup baik karena tidak ada penurunan yang signifikan dalam jumlah total kuadrat dalam cluster pada jumlah cluster yang lebih tinggi.
+
+## 6.3 Sillhouette Method
+
+The silhouette method mengukur silhouette coefficient, engan menghitung rata-rata jarak antar klaster dan rerata jarak klaster terdekat untuk setiap pengamatan. Kami mendapatkan jumlah cluster yang optimal dengan memilih jumlah cluster dengan nilai siluet tertinggi (puncak).
+```{r}
+fviz_nbclust(spotify_num, kmeans, method = "silhouette", k.max = 10) 
+```
+
+Based on sillhouette method, number clusters with maximum score and considered as the optimum k-clusters is 2
+
+## 6.4 Gap Statistic
+
+The gap statistic membandingkan total dalam variasi intra-cluster untuk nilai k yang berbeda dengan nilai yang diharapkan di bawah distribusi referensi nol dari data. Estimasi cluster yang optimal akan menjadi nilai yang memaksimalkan gap statistik.
+
+```{r}
+fviz_nbclust(spotify_num, kmeans, "gap_stat", k.max = 10) + labs(subtitle = "Gap Statistic method")
+```
+
+
+Berdasarkan metode gap statistic, k optimal adalah 1
+
+## 6.5 Majority Voting for Optimium K
+
+Hasil dari 3 metode kami adalah metode Elbow k = 2, metode Sillhouette k = 2, dan Gap Statistic k = 1. Dua dari hasil metode kami adalah 2 kami pertimbangkan untuk menggunakan hasil ini, karena jika kami memilih k = 1, kami tidak dapat menganalisis perbedaan antar kelompok atau segmen.
+
+## 6.6 K-Means Clustering 
+
+Di sini kami menerapkan K optimal dari proses kami sebelumnya, kami memutuskan menggunakan K = 2
+
+```{r}
+set.seed(100)
+km_spotify <-kmeans(spotify_scale, centers = 2)
+km_spotify
+```
+
+berdasarkan ringkasan, kami menemukan 1558 observasi menuju cluster 1 dan 736 lainnya menuju cluster 2. Jadi sekarang kami memiliki informasi cluster dari setiap observasi, kami dapat menggabungkan vektor cluster ke dataset sampel kami
+
+```{r}
+spotify_sample$cluster <- as.factor(km_spotify$cluster)
+head(spotify_sample)
+```
+
+## 6.7 Cluster Analysis
+
+Kami akan melakukan analisis dan eksplorasi berdasarkan cluster yang telah kami lakukan menggunakan k-mean. fokus kita adalah popularitas, coba lihat apakah ada korelasi antara cluster dengan tingkat popularitas kita.
+
+```{r}
+spotify_sample %>% 
+  select(cluster, popularity) %>% 
+  group_by(cluster) %>% 
+  summarise_all("mean")
+```
+
+Antara cluster 1 dan 2 rata-rata tidak memiliki perbedaan Popularitas. itu hanya menunjukkan sedikit perbedaan bahwa cluster 2 memiliki popularitas 0,2 lebih tinggi dari cluster 1. Mari kita lihat dengan boxplot
+
+```{r}
+spotify_sample %>% ggplot(aes(x = cluster, y = popularity, fill = cluster)) +
+  geom_boxplot() +
+  theme_grey()
+```
+
+Sama seperti yang kami analisis sebelumnya, tidak ada perbedaan popularitas yang spesifik antara kedua cluster. Jadi kita bisa berasumsi bahwa cluster kita tidak fokus pada fitur atau variabel popularitas. mari kita lihat berdasarkan genre.
+
+```{r}
+spotify_sample %>% 
+  select(cluster, genre) %>% 
+  group_by(genre, cluster) %>% 
+  summarize(n = n()) %>% 
+  ungroup() %>%
+  spread(genre, n, fill=0)
+```
+
+Cluster kami juga tidak memisahkan genre. jadi mari kita lihat visualisasi lainnya `acousticness`
+
+```{r}
+spotify_sample %>% ggplot(aes(x = cluster, y = acousticness, fill = cluster)) +
+  geom_boxplot() +
+  theme_grey()
+```
+
+`acousticness` adalah salah satu variabel yang dibaca cluster. Jadi kita bisa mencari variabel keseluruhan untuk melihat other variable that our cluster specific different 
+
+```{r}
+spotify_sample %>%
+  select_if(is.numeric) %>% 
+  mutate(cluster = as.factor(km_spotify$cluster)) %>% 
+  group_by(cluster) %>% 
+  summarise_all("mean")
+```
+
+Kita dapat melihat antara `Cluster 1` dan `Cluster 2` memiliki beberapa perbedaan yang signifikan dalam fitur `acousticness`, `energy`, `instrumentalness`, `liveness`, `loudness`, `energy`, `instrumentalness`, `loudness` . Tidak masalah Antara cluster 1 dan 2 tidak memiliki perbedaan popularitas yang signifikan, kita dapat berasumsi jika Track memiliki lebih banyak pola seperti `Cluster 2 `, ia memiliki lebih banyak peluang untuk mendapatkan popularitas yang lebih baik
+
+
+
+# 7. PCA
+
+Principal component analysis (PCA) prosedur statistik yang menggunakan transformasi ortogonal untuk mengubah serangkaian pengamatan dari variabel yang mungkin berkorelasi menjadi satu set nilai variabel yang tidak berkorelasi linier yang disebut komponen utama. . PCA sensitif terhadap penskalaan relatif dari variabel asli.
+
+## 7.1 Dimensionality Reduction
+
+Kami akan mencoba membuat PCA dari dataset sampel dan melihat nilai eigen serta persentase varians untuk setiap dimensi.
+
+```{r}
+non_numeric <- which(sapply(spotify_sample, negate(is.numeric)))
+spotify_pca <- PCA(spotify_sample,
+                  scale.unit = T,
+                  quali.sup = non_numeric,
+                  graph = F,
+                  ncp = 11)
+summary('spotify_pca')
+```
+
+
+Setelah selesai membuat PCA agar lebih mudah dipahami, kita dapat memvisualisasikan setiap varians yang ditangkap oleh setiap dimensi.
+
+```{r}
+fviz_eig(spotify_pca, ncp = 11, addlabels = T, main = "Variance Explained by Dimensions")
+```
+
+Terlihat sekitar 50% varians data sampel hanya dapat dijelaskan dengan 4 dimensi pertama.
+
+Target kami adalah pengurangan fitur untuk membuat perhitungan lebih ringan, sehingga kami dapat menargetkan lebih dari 80% informasi dengan dimensi minimum. Kita dapat mengambil 8 dimensi dari 11 dimensi yang kita miliki, karena dapat kita simpulkan, dengan hanya 8 dimensi kita dapat mencapai lebih dari 80% total varians yang dapat merepresentasikan dataset.
+```{r}
+spotify_pca_min <- data.frame(spotify_pca$ind$coord[ ,1:8]) %>% 
+  bind_cols(cluster = as.factor(spotify_sample$cluster))
+head(spotify_pca_min)
+```
+
+
+## 7.2 Individual and Variable Factor Map
+
+Dari bagian sebelumnya, kita telah membahas bahwa PCA dapat dikombinasikan dengan clustering untuk mendapatkan visualisasi yang lebih baik dari hasil clustering kita, atau hanya untuk memahami pola dalam dataset.
+
+```{r}
+fviz_cluster(object = km_spotify, data = spotify_scale) + 
+  theme_grey()
+```
+
+Plot di atas adalah contoh peta faktor individu. Titik-titik dalam plot menyerupai pengamatan dan diwarnai dengan Cluster. Dim1 dan Dim2 masing-masing adalah PC1 dan PC2, dengan bagian mereka sendiri (persentase) informasi dari total informasi kumpulan data.
+
+```{r}
+fviz_pca_var(spotify_pca) +
+  theme_grey()
+```
+
+Plot di atas menunjukkan kepada kita bahwa variabel terletak di dalam lingkaran, artinya kita membutuhkan lebih dari dua komponen untuk mewakili data kita dengan sempurna. Jarak antara variabel dan asal mengukur kualitas variabel pada peta faktor. Variabel yang berkorelasi dengan PC1 dan PC2 adalah yang paling penting dalam menjelaskan variabilitas dalam kumpulan data. Variabel yang tidak berkorelasi dengan PC manapun atau berkorelasi dengan dimensi terakhir adalah variabel dengan kontribusi rendah dan mungkin dihilangkan untuk menyederhanakan analisis keseluruhan.
+
+Insight yang didapatkan dari Individual Factor Map and Variable Factor Map adalah:
+
+Cluster 1: tracks lebih banyak `danceability`,`speechiness`, `valence`,`loudness`,`energy`,`tempo` and `lieveness` 
+Cluster 2: tracks lebih banyak `accousticness` `instrumentalness` and more `durations`
+
+
+## 7.3 PCA Clustering
+
+PCA juga dapat diintegrasikan dengan hasil K-means Clustering untuk membantu memvisualisasikan data kami dalam dimensi yang lebih sedikit daripada fitur aslinya.
+```{r}
+fviz_pca_ind(spotify_pca, habillage = 1)
+```
+
+
+Beberapa insight yang bisa kita dapatkan dari visualisasi ini adalah:
+1. semua genre memiliki 2 cluster yang berbeda
+2. Dilihat dari Variable Factor Map, Genre rock berpeluang mendapatkan popularitas yang lebih kecil dibandingkan 4 genre lainnya
+3. Genre Pop dan Hiphop dengan lebih banyak `danceability`,`speechiness`, `valensi` memiliki peluang lebih besar untuk mendapatkan Popularitas yang lebih baik
+
+# 8. Conclusion
+
+Dari analisis unsupervised learning di atas, kita dapat menyimpulkan bahwa:
+
+1. `Popularitas` hanya memiliki hubungan kecil dengan fitur/variabel lain, tetapi lebih banyak berhubungan dengan `danceability`,`speechiness`, `valensi` yang dapat membantu mendapatkan `Popularitas` yang lebih baik
+2. Berdasarkan clustering, track yang menjadi `Cluster 1` lebih berpeluang mendapatkan `Popularity` lebih baik daripada `Cluster 2`
+3. Genre rock yang biasanya `loudness`, `energy`, `tempo`, `lieveness`, `instrumentalness` dan `durations` yang tinggi terlihat lebih kecil popularitasnya dibandingkan genre lainnya
+4. Reduksi dimensi dapat dilakukan dengan menggunakan dataset ini. Untuk melakukan pengurangan dimensi, kita dapat memilih PC dari total 11 PC sesuai dengan informasi total. kami dapat menargetkan lebih dari 80% informasi dengan dimensi minimum. Kita dapat mengambil 8 dimensi dari 11 dimensi yang kita miliki, karena kita dapat menjumlahkannya, dengan hanya 8 dimensi kita dapat mencapai lebih dari 80% total varians yang dapat mewakili dataset kita.
+5. Kumpulan data yang ditingkatkan yang diperoleh dari unsupervised learning (mis. PCA) dapat digunakan lebih lanjut untuk pembelajaran yang diawasi (klasifikasi) atau untuk visualisasi data yang lebih baik (data berdimensi tinggi) dengan berbagai insights.
